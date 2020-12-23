@@ -201,8 +201,8 @@ function getWebGLEnv(gl, getMemory) {
                 gl.texImage2D(target, level, internal_format, width, height, border, format, type_, null);
             } else {
                 const data = (type_ === gl.UNSIGNED_BYTE)
-                    ? new Uint8Array(getMemory().buffer, pixels, pixels_len)
-                    : new Uint16Array(getMemory().buffer, pixels, pixels_len / 2);
+                    ? new Uint8Array(getMemory().buffer, pixels_ptr, pixels_len)
+                    : new Uint16Array(getMemory().buffer, pixels_ptr, pixels_len / 2);
                 gl.texImage2D(target, level, internal_format, width, height, border, format, type_, data);
             }
         },

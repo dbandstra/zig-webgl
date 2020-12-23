@@ -62,7 +62,7 @@ extern fn glShaderSource_api_(shader: GLuint, string_ptr: [*]const u8, string_le
 pub fn glShaderSource_api(shader: GLuint, string: []const u8) void {
     glShaderSource_api_(shader, string.ptr, string.len);
 }
-pub extern fn glTexImage2D_api(target: GLenum, level: GLint, internal_format: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, type_: GLenum, pixels_ptr: ?*const c_void, pixels_len: usize) void;
+pub extern fn glTexImage2D_api(target: GLenum, level: GLint, internal_format: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, type_: GLenum, pixels_ptr: ?*const c_void, pixels_len: GLsizei) void;
 pub extern fn glTexParameterf(target: c_uint, pname: c_uint, param: f32) void;
 pub extern fn glTexParameteri(target: c_uint, pname: c_uint, param: c_uint) void;
 pub extern fn glUniform1f(location_id: c_int, x: f32) void;
