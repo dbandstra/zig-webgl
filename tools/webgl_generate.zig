@@ -563,11 +563,7 @@ const funcs = [_]Func{
         },
         .ret = "void",
         .js =
-        // TODO - don't call getProgramParameter here
         \\gl.linkProgram(glPrograms[program]);
-        \\if (!gl.getProgramParameter(glPrograms[program], gl.LINK_STATUS)) {
-        \\    throw ("Error linking program:" + gl.getProgramInfoLog(glPrograms[program]));
-        \\}
     },
     Func{
         .name = "glPixelStorei",

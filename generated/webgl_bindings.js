@@ -219,9 +219,6 @@ function getWebGLEnv(gl, getMemory) {
         },
         glLinkProgram(program) {
             gl.linkProgram(glPrograms[program]);
-            if (!gl.getProgramParameter(glPrograms[program], gl.LINK_STATUS)) {
-                throw ("Error linking program:" + gl.getProgramInfoLog(glPrograms[program]));
-            }
         },
         glPixelStorei(pname, param) {
             gl.pixelStorei(pname, param);
