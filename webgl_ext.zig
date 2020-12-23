@@ -99,28 +99,28 @@ pub fn glShaderSource(
 }
 
 fn getBytesPerPixel(format: GLenum, type_: GLenum) GLsizei {
-    return switch (type_) {
-        GL_UNSIGNED_BYTE => switch (format) {
+    switch (type_) {
+        GL_UNSIGNED_BYTE => return switch (format) {
             GL_RGBA => 4,
             GL_RGB => 3,
             GL_LUMINANCE_ALPHA => 2,
             GL_LUMINANCE, GL_ALPHA => 1,
             else => 0,
         },
-        GL_UNSIGNED_SHORT_4_4_4_4 => switch (format) {
+        GL_UNSIGNED_SHORT_4_4_4_4 => return switch (format) {
             GL_RGBA => 2,
             else => 0,
         },
-        GL_UNSIGNED_SHORT_5_5_5_1 => switch (format) {
+        GL_UNSIGNED_SHORT_5_5_5_1 => return switch (format) {
             GL_RGBA => 2,
             else => 0,
         },
-        GL_UNSIGNED_SHORT_5_6_5 => switch (format) {
+        GL_UNSIGNED_SHORT_5_6_5 => return switch (format) {
             GL_RGB => 2,
             else => 0,
         },
-        else => 0,
-    };
+        else => return 0,
+    }
 }
 
 pub fn glTexImage2D(

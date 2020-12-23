@@ -576,7 +576,7 @@ const funcs = [_]Func{
             .{ .name = "border", .type = "GLint" },
             .{ .name = "format", .type = "GLenum" },
             .{ .name = "type_", .type = "GLenum" },
-            .{ .name = "pixels_ptr", .type = "?*c_void" },
+            .{ .name = "pixels_ptr", .type = "?*const c_void" },
             .{ .name = "pixels_len", .type = "usize" },
         },
         .ret = "void",
