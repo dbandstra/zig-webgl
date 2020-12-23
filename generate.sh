@@ -6,4 +6,6 @@ set -e
 #  - generated/webgl.zig
 zig run tools/webgl_generate.zig
 
+(echo; cat webgl_ext.zig) >> generated/webgl.zig
+
 (echo; cat webgl_constants.zig) >> generated/webgl.zig

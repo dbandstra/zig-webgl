@@ -8,6 +8,37 @@ function getWebGLEnv(gl, getMemory) {
         return s;
     };
 
+    const getBytesPerPixel = (format, type) => {
+        switch (type) {
+            case gl.UNSIGNED_BYTE:
+                switch (format) {
+                    case gl.RGBA:
+                        return 4;
+                    case gl.RGB:
+                        return 3;
+                    case gl.LUMINANCE_ALPHA:
+                        return 2;
+                    case gl.LUMINANCE:
+                    case gl.ALPHA:
+                        return 1;
+                }
+                break;
+            case gl.UNSIGNED_SHORT_4_4_4_4:
+                if (format === gl.RGBA)
+                    return 2;
+                break;
+            case gl.UNSIGNED_SHORT_5_5_5_1:
+                if (format === gl.RGBA)
+                    return 2;
+                break;
+            case gl.UNSIGNED_SHORT_5_6_5:
+                if (format === gl.RGB)
+                    return 2;
+                break;
+        }
+        return 0; // invalid
+    };
+
     const glShaders = [];
     const glPrograms = [];
     const glBuffers = [];
@@ -16,6 +47,16 @@ function getWebGLEnv(gl, getMemory) {
     const glUniformLocations = [];
 
     return {
+        getProgramInfoLogLength(program_id) {
+            const log = gl.getProgramInfoLog(glPrograms[program_id]);
+            if (log === null) return 0;
+            return new TextEncoder().encode(log).length;
+        },
+        getShaderInfoLogLength(shader_id) {
+            const log = gl.getShaderInfoLog(glShaders[shader_id]);
+            if (log === null) return 0;
+            return new TextEncoder().encode(log).length;
+        },
         glActiveTexture(target) {
             gl.activeTexture(target);
         },
@@ -34,9 +75,13 @@ function getWebGLEnv(gl, getMemory) {
         glBlendFunc(x, y) {
             gl.blendFunc(x, y);
         },
-        glBufferData(type, count, data_ptr, draw_type) {
-            const floats = new Float32Array(getMemory().buffer, data_ptr, count);
-            gl.bufferData(type, floats, draw_type);
+        glBufferData(target, size, data, usage) {
+            if (data === null) {
+                gl.bufferData(target, size, usage);
+            } else {
+                const array = new Uint8Array(getMemory().buffer, data, size);
+                gl.bufferData(target, array, usage);
+            }
         },
         glCheckFramebufferStatus(target) {
             return gl.checkFramebufferStatus(target);
@@ -49,9 +94,6 @@ function getWebGLEnv(gl, getMemory) {
         },
         glCompileShader(shader) {
             gl.compileShader(glShaders[shader]);
-            if (!gl.getShaderParameter(glShaders[shader], gl.COMPILE_STATUS)) {
-                throw "Error compiling shader:" + gl.getShaderInfoLog(glShaders[shader]);
-            }
         },
         glCreateBuffer() {
             glBuffers.push(gl.createBuffer());
@@ -98,8 +140,8 @@ function getWebGLEnv(gl, getMemory) {
         glDisable(cap) {
             gl.disable(cap);
         },
-        glDrawArrays(type, offset, count) {
-            gl.drawArrays(type, offset, count);
+        glDrawArrays(mode, first, count) {
+            gl.drawArrays(mode, first, count);
         },
         glEnable(x) {
             gl.enable(x);
@@ -120,6 +162,56 @@ function getWebGLEnv(gl, getMemory) {
         glGetError() {
             return gl.getError();
         },
+        glGetProgramInfoLog_api(program_id, ptr, len) {
+            const log = gl.getProgramInfoLog(glPrograms[program_id]);
+            if (log === null) return 0;
+
+            const encoded = new TextEncoder().encode(log);
+            const outbuf = new Uint8Array(getMemory().buffer, ptr, len);
+
+            for (let i = 0; i < len && i < encoded.length; i++) {
+                outbuf[i] = encoded[i];
+            }
+
+            // TODO do something with Uint8Array::set? like this:
+            //const dest = new Uint8Array(memory.buffer, memory_index, asset.bytes.byteLength);
+            //const src = new Uint8Array(asset.bytes);
+            //dest.set(src);
+
+            return encoded.length;
+        },
+        glGetProgramParameter(program_id, pname) {
+            const result = gl.getProgramParameter(glPrograms[program_id], pname);
+            if (result === null) return 0;
+            if (result === false) return 0;
+            if (result === true) return 1;
+            return result;
+        },
+        glGetShaderInfoLog_api(shader_id, ptr, len) {
+            const log = gl.getShaderInfoLog(glShaders[shader_id]);
+            if (log === null) return 0;
+
+            const encoded = new TextEncoder().encode(log);
+            const outbuf = new Uint8Array(getMemory().buffer, ptr, len);
+
+            for (let i = 0; i < len && i < encoded.length; i++) {
+                outbuf[i] = encoded[i];
+            }
+
+            // TODO do something with Uint8Array::set? like this:
+            //const dest = new Uint8Array(memory.buffer, memory_index, asset.bytes.byteLength);
+            //const src = new Uint8Array(asset.bytes);
+            //dest.set(src);
+
+            return encoded.length;
+        },
+        glGetShaderParameter(shader_id, pname) {
+            const result = gl.getShaderParameter(glShaders[shader_id], pname);
+            if (result === null) return 0;
+            if (result === false) return 0;
+            if (result === true) return 1;
+            return result;
+        },
         glGetUniformLocation_(program_id, name_ptr, name_len) {
             const name = readCharStr(name_ptr, name_len);
             glUniformLocations.push(gl.getUniformLocation(glPrograms[program_id], name));
@@ -134,14 +226,25 @@ function getWebGLEnv(gl, getMemory) {
         glPixelStorei(pname, param) {
             gl.pixelStorei(pname, param);
         },
-        glShaderSource_(shader, string_ptr, string_len) {
+        glShaderSource_api_(shader, string_ptr, string_len) {
             const string = readCharStr(string_ptr, string_len);
             gl.shaderSource(glShaders[shader], string);
         },
-        glTexImage2D(target, level, internal_format, width, height, border, format, type, data_ptr, data_len) {
-            // FIXME - look at data_ptr, not data_len, to determine NULL?
-            const data = data_len > 0 ? new Uint8Array(getMemory().buffer, data_ptr, data_len) : null;
-            gl.texImage2D(target, level, internal_format, width, height, border, format, type, data);
+        glTexImage2D_api(target, level, internal_format, width, height, border, format, type_, pixels) {
+            if (pixels === null) {
+                gl.texImage2D(target, level, internal_format, width, height, border, format, type_, null);
+            } else {
+                const bytes_per_pixel = getBytesPerPixel(format, type_);
+                if (bytes_per_pixel === 0) return; // invalid (TODO set gl error?)
+
+                const pixels_len = width * height * bytes_per_pixel;
+
+                const data = (type_ === gl.UNSIGNED_BYTE)
+                    ? new Uint8Array(getMemory().buffer, pixels, pixels_len)
+                    : new Uint16Array(getMemory().buffer, pixels, pixels_len / 2);
+
+                gl.texImage2D(target, level, internal_format, width, height, border, format, type_, data);
+            }
         },
         glTexParameterf(target, pname, param) {
             gl.texParameterf(target, pname, param);

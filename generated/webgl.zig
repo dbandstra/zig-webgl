@@ -13,13 +13,15 @@ pub const GLuint = u32;
 pub const GLfloat = f32;
 pub const GLclampf = f32;
 
+pub extern fn getProgramInfoLogLength(program_id: GLuint) GLint;
+pub extern fn getShaderInfoLogLength(shader_id: GLuint) GLint;
 pub extern fn glActiveTexture(target: c_uint) void;
 pub extern fn glAttachShader(program: c_uint, shader: c_uint) void;
 pub extern fn glBindBuffer(type: c_uint, buffer_id: c_uint) void;
 pub extern fn glBindFramebuffer(target: c_uint, framebuffer: c_uint) void;
 pub extern fn glBindTexture(target: c_uint, texture_id: c_uint) void;
 pub extern fn glBlendFunc(x: c_uint, y: c_uint) void;
-pub extern fn glBufferData(type: c_uint, count: c_uint, data_ptr: [*c]const f32, draw_type: c_uint) void;
+pub extern fn glBufferData(target: GLenum, size: c_uint, data: ?*const c_void, usage: GLenum) void;
 pub extern fn glCheckFramebufferStatus(target: GLenum) GLenum;
 pub extern fn glClear(mask: GLbitfield) void;
 pub extern fn glClearColor(r: f32, g: f32, b: f32, a: f32) void;
@@ -36,7 +38,7 @@ pub extern fn glDeleteTexture(id: c_uint) void;
 pub extern fn glDepthFunc(x: c_uint) void;
 pub extern fn glDetachShader(program: c_uint, shader: c_uint) void;
 pub extern fn glDisable(cap: GLenum) void;
-pub extern fn glDrawArrays(type: c_uint, offset: c_uint, count: c_uint) void;
+pub extern fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei) void;
 pub extern fn glEnable(x: c_uint) void;
 pub extern fn glEnableVertexAttribArray(x: c_uint) void;
 pub extern fn glFramebufferTexture2D(target: GLenum, attachment: GLenum, textarget: GLenum, texture: GLuint, level: GLint) void;
@@ -46,17 +48,21 @@ pub fn glGetAttribLocation(program_id: c_uint, name: []const u8) c_int {
     return glGetAttribLocation_(program_id, name.ptr, name.len);
 }
 pub extern fn glGetError() c_int;
+pub extern fn glGetProgramInfoLog_api(program_id: c_uint, ptr: [*]u8, len: c_uint) c_uint;
+pub extern fn glGetProgramParameter(program_id: c_uint, pname: GLenum) GLint;
+pub extern fn glGetShaderInfoLog_api(shader_id: c_uint, ptr: [*]u8, len: c_uint) c_uint;
+pub extern fn glGetShaderParameter(shader_id: c_uint, pname: GLenum) GLenum;
 extern fn glGetUniformLocation_(program_id: c_uint, name_ptr: [*]const u8, name_len: c_uint) c_int;
 pub fn glGetUniformLocation(program_id: c_uint, name: []const u8) c_int {
     return glGetUniformLocation_(program_id, name.ptr, name.len);
 }
 pub extern fn glLinkProgram(program: c_uint) void;
 pub extern fn glPixelStorei(pname: GLenum, param: GLint) void;
-extern fn glShaderSource_(shader: GLuint, string_ptr: [*]const u8, string_len: c_uint) void;
-pub fn glShaderSource(shader: GLuint, string: []const u8) void {
-    glShaderSource_(shader, string.ptr, string.len);
+extern fn glShaderSource_api_(shader: GLuint, string_ptr: [*]const u8, string_len: c_uint) void;
+pub fn glShaderSource_api(shader: GLuint, string: []const u8) void {
+    glShaderSource_api_(shader, string.ptr, string.len);
 }
-pub extern fn glTexImage2D(target: c_uint, level: c_uint, internal_format: c_uint, width: c_int, height: c_int, border: c_uint, format: c_uint, type: c_uint, data_ptr: ?[*]const u8, data_len: c_uint) void;
+pub extern fn glTexImage2D_api(target: GLenum, level: GLint, internal_format: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, type_: GLenum, pixels: ?[*]const u8) void;
 pub extern fn glTexParameterf(target: c_uint, pname: c_uint, param: f32) void;
 pub extern fn glTexParameteri(target: c_uint, pname: c_uint, param: c_uint) void;
 pub extern fn glUniform1f(location_id: c_int, x: f32) void;
@@ -66,6 +72,120 @@ pub extern fn glUniformMatrix4fv(location_id: c_int, data_len: c_int, transpose:
 pub extern fn glUseProgram(program_id: c_uint) void;
 pub extern fn glVertexAttribPointer(attrib_location: c_uint, size: c_uint, type: c_uint, normalize: c_uint, stride: c_uint, offset: [*c]const c_uint) void;
 pub extern fn glViewport(x: c_int, y: c_int, width: c_int, height: c_int) void;
+
+const std = @import("std");
+
+pub const GLchar = u8;
+
+pub const GL_INFO_LOG_LENGTH = 0x8B84;
+
+pub fn glDeleteBuffers(n: GLsizei, buffers: [*c]const GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        glDeleteBuffer(buffers[i]);
+    }
+}
+
+pub fn glGenBuffers(n: GLsizei, buffers: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        buffers[i] = glCreateBuffer();
+    }
+}
+
+pub fn glGenTextures(n: GLsizei, textures: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        textures[i] = glCreateTexture();
+    }
+}
+
+pub fn glGetProgramInfoLog(
+    program: GLuint,
+    max_length: GLsizei,
+    length: [*c]GLsizei,
+    info_log: [*c]GLchar,
+) void {
+    const n = glGetProgramInfoLog_api(program, info_log, @intCast(c_uint, max_length));
+    length.* = @intCast(GLsizei, n);
+}
+
+pub fn glGetProgramiv(program: GLuint, pname: GLenum, params: *GLint) void {
+    switch (pname) {
+        GL_LINK_STATUS => {
+            const status = glGetProgramParameter(program, GL_LINK_STATUS);
+            params.* = @intCast(GLint, status);
+        },
+        GL_INFO_LOG_LENGTH => {
+            params.* = getProgramInfoLogLength(program);
+        },
+        // TODO do a proper panic if we know the enum SHOULD be handled?
+        else => unreachable, // FIXME set GL_INVALID_ENUM
+        // (need to wrap error handling to make this possible...)
+    }
+}
+
+pub fn glGetShaderInfoLog(
+    shader: GLuint,
+    max_length: GLsizei,
+    length: [*c]GLsizei,
+    info_log: [*c]GLchar,
+) void {
+    const n = glGetShaderInfoLog_api(shader, info_log, @intCast(c_uint, max_length));
+    length.* = @intCast(GLsizei, n);
+}
+
+pub fn glGetShaderiv(shader: GLuint, pname: GLenum, params: *GLint) void {
+    switch (pname) {
+        GL_COMPILE_STATUS => {
+            const status = glGetShaderParameter(shader, GL_COMPILE_STATUS);
+            params.* = @intCast(GLint, status);
+        },
+        GL_INFO_LOG_LENGTH => {
+            params.* = getShaderInfoLogLength(shader);
+        },
+        // TODO do a proper panic if we know the enum SHOULD be handled?
+        else => unreachable, // FIXME set GL_INVALID_ENUM
+        // (need to wrap error handling to make this possible...)
+    }
+}
+
+pub fn glShaderSource(
+    shader: GLuint,
+    count: GLsizei,
+    string: [*c]const [*c]const GLchar,
+    length: [*c]const GLint,
+) void {
+    // TODO what happens when count > 1? it's just like concatenating the strings?
+    // implement that on the javascript side.
+    std.debug.assert(count == 1);
+
+    const str: []const u8 = blk: {
+        if (length) |ilengths| {
+            if (ilengths[0] >= 0) {
+                const ulen = @intCast(usize, ilengths[0]);
+                break :blk string[0][0..ulen];
+            }
+        }
+        break :blk std.mem.spanZ(string[0]);
+    };
+
+    glShaderSource_api(shader, str);
+}
+
+pub fn glTexImage2D(
+    target: GLenum,
+    level: GLint,
+    internalformat: GLint,
+    width: GLsizei,
+    height: GLsizei,
+    border: GLint,
+    format: GLenum,
+    type_: GLenum,
+    pixels: ?*const c_void,
+) void {
+    glTexImage2D(target, level, internalformat, width, height, border, format, type_, pixels);
+}
 
 // these aren't part of WebGL (since javascript has its own booleans) but i've been using them
 pub const GL_FALSE = 0;

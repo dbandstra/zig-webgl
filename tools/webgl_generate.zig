@@ -14,6 +14,7 @@ const Arg = struct {
 
 // TODO - i don't know what to put for GLboolean... i can't find an explicit
 // mention anywhere on what size it should be
+// TODO - don't use i64. that gives you "can't convert BigInt to number" errors
 const zig_top =
     \\pub const GLenum = c_uint;
     \\pub const GLboolean = bool;
@@ -44,6 +45,37 @@ const js_top =
     \\        return s;
     \\    };
     \\
+    \\    const getBytesPerPixel = (format, type) => {
+    \\        switch (type) {
+    \\            case gl.UNSIGNED_BYTE:
+    \\                switch (format) {
+    \\                    case gl.RGBA:
+    \\                        return 4;
+    \\                    case gl.RGB:
+    \\                        return 3;
+    \\                    case gl.LUMINANCE_ALPHA:
+    \\                        return 2;
+    \\                    case gl.LUMINANCE:
+    \\                    case gl.ALPHA:
+    \\                        return 1;
+    \\                }
+    \\                break;
+    \\            case gl.UNSIGNED_SHORT_4_4_4_4:
+    \\                if (format === gl.RGBA)
+    \\                    return 2;
+    \\                break;
+    \\            case gl.UNSIGNED_SHORT_5_5_5_1:
+    \\                if (format === gl.RGBA)
+    \\                    return 2;
+    \\                break;
+    \\            case gl.UNSIGNED_SHORT_5_6_5:
+    \\                if (format === gl.RGB)
+    \\                    return 2;
+    \\                break;
+    \\        }
+    \\        return 0; // invalid
+    \\    };
+    \\
     \\    const glShaders = [];
     \\    const glPrograms = [];
     \\    const glBuffers = [];
@@ -58,6 +90,29 @@ const js_bottom =
 ;
 
 const funcs = [_]Func{
+    Func{
+        .name = "getProgramInfoLogLength",
+        .args = &[_]Arg{
+            .{ .name = "program_id", .type = "GLuint" },
+        },
+        .ret = "GLint",
+        .js =
+        \\const log = gl.getProgramInfoLog(glPrograms[program_id]);
+        \\if (log === null) return 0;
+        \\return new TextEncoder().encode(log).length;
+    },
+    Func{
+        .name = "getShaderInfoLogLength",
+        .args = &[_]Arg{
+            .{ .name = "shader_id", .type = "GLuint" },
+        },
+        .ret = "GLint",
+        .js =
+        \\const log = gl.getShaderInfoLog(glShaders[shader_id]);
+        \\if (log === null) return 0;
+        \\return new TextEncoder().encode(log).length;
+    },
+    // actual functions below
     Func{
         .name = "glActiveTexture",
         .args = &[_]Arg{
@@ -126,16 +181,19 @@ const funcs = [_]Func{
     Func{
         .name = "glBufferData",
         .args = &[_]Arg{
-            .{ .name = "type", .type = "c_uint" },
-            .{ .name = "count", .type = "c_uint" },
-            .{ .name = "data_ptr", .type = "[*c]const f32" },
-            .{ .name = "draw_type", .type = "c_uint" },
+            .{ .name = "target", .type = "GLenum" },
+            .{ .name = "size", .type = "c_uint" }, // GLsizeiptr
+            .{ .name = "data", .type = "?*const c_void" }, // TODO maybe `?[*]const u8` instead
+            .{ .name = "usage", .type = "GLenum" },
         },
         .ret = "void",
         .js =
-        // TODO - check for NULL?
-        \\const floats = new Float32Array(getMemory().buffer, data_ptr, count);
-        \\gl.bufferData(type, floats, draw_type);
+        \\if (data === null) {
+        \\    gl.bufferData(target, size, usage);
+        \\} else {
+        \\    const array = new Uint8Array(getMemory().buffer, data, size);
+        \\    gl.bufferData(target, array, usage);
+        \\}
     },
     // TODO - glBufferSubData
     Func{
@@ -179,11 +237,7 @@ const funcs = [_]Func{
         },
         .ret = "void",
         .js =
-        // TODO don't call getShaderParameter here
         \\gl.compileShader(glShaders[shader]);
-        \\if (!gl.getShaderParameter(glShaders[shader], gl.COMPILE_STATUS)) {
-        \\    throw "Error compiling shader:" + gl.getShaderInfoLog(glShaders[shader]);
-        \\}
     },
     // TODO - glCompressedTexImage2D
     // TODO - glCompressedTexImage3D
@@ -310,13 +364,13 @@ const funcs = [_]Func{
     Func{
         .name = "glDrawArrays",
         .args = &[_]Arg{
-            .{ .name = "type", .type = "c_uint" },
-            .{ .name = "offset", .type = "c_uint" },
-            .{ .name = "count", .type = "c_uint" },
+            .{ .name = "mode", .type = "GLenum" },
+            .{ .name = "first", .type = "GLint" },
+            .{ .name = "count", .type = "GLsizei" },
         },
         .ret = "void",
         .js =
-        \\gl.drawArrays(type, offset, count);
+        \\gl.drawArrays(mode, first, count);
     },
     // TODO - glDrawElements
     Func{
@@ -370,7 +424,7 @@ const funcs = [_]Func{
         .name = "glGetAttribLocation",
         .args = &[_]Arg{
             .{ .name = "program_id", .type = "c_uint" },
-            .{ .name = "name", .type = "SLICE" },
+            .{ .name = "name", .type = "STRING" },
         },
         .ret = "c_int",
         .js =
@@ -388,11 +442,92 @@ const funcs = [_]Func{
     // TODO - glGetExtension
     // TODO - glGetFramebufferAttachmentParameter
     // TODO - glGetParameter
-    // TODO - glGetProgramInfoLog
-    // TODO - glGetProgramParameter
+    Func{
+        .name = "glGetProgramInfoLog_api",
+        .args = &[_]Arg{
+            .{ .name = "program_id", .type = "c_uint" },
+            .{ .name = "ptr", .type = "[*]u8" },
+            .{ .name = "len", .type = "c_uint" },
+        },
+        .ret = "c_uint",
+        .js =
+        \\const log = gl.getProgramInfoLog(glPrograms[program_id]);
+        \\if (log === null) return 0;
+        \\
+        \\const encoded = new TextEncoder().encode(log);
+        \\const outbuf = new Uint8Array(getMemory().buffer, ptr, len);
+        \\
+        \\for (let i = 0; i < len && i < encoded.length; i++) {
+        \\    outbuf[i] = encoded[i];
+        \\}
+        \\
+        \\// TODO do something with Uint8Array::set? like this:
+        \\//const dest = new Uint8Array(memory.buffer, memory_index, asset.bytes.byteLength);
+        \\//const src = new Uint8Array(asset.bytes);
+        \\//dest.set(src);
+        \\
+        \\return encoded.length;
+    },
+    Func{
+        .name = "glGetProgramParameter",
+        .args = &[_]Arg{
+            .{ .name = "program_id", .type = "c_uint" },
+            .{ .name = "pname", .type = "GLenum" },
+        },
+        // FIXME - return type can actually be GLboolean or GLint depending on
+        // pname, see the docs at khronos.org
+        .ret = "GLint",
+        .js =
+        \\const result = gl.getProgramParameter(glPrograms[program_id], pname);
+        \\if (result === null) return 0;
+        \\if (result === false) return 0;
+        \\if (result === true) return 1;
+        \\return result;
+    },
     // TODO - glGetRenderbufferParameter
-    // TODO - glGetShaderInfoLog
-    // TODO - glGetShaderParameter
+    Func{
+        //fn (GLuint, GLsizei, [*c]GLsizei, [*c]GLchar) callconv(cc) void;
+        .name = "glGetShaderInfoLog_api",
+        .args = &[_]Arg{
+            .{ .name = "shader_id", .type = "c_uint" },
+            .{ .name = "ptr", .type = "[*]u8" },
+            .{ .name = "len", .type = "c_uint" },
+        },
+        .ret = "c_uint",
+        .js =
+        \\const log = gl.getShaderInfoLog(glShaders[shader_id]);
+        \\if (log === null) return 0;
+        \\
+        \\const encoded = new TextEncoder().encode(log);
+        \\const outbuf = new Uint8Array(getMemory().buffer, ptr, len);
+        \\
+        \\for (let i = 0; i < len && i < encoded.length; i++) {
+        \\    outbuf[i] = encoded[i];
+        \\}
+        \\
+        \\// TODO do something with Uint8Array::set? like this:
+        \\//const dest = new Uint8Array(memory.buffer, memory_index, asset.bytes.byteLength);
+        \\//const src = new Uint8Array(asset.bytes);
+        \\//dest.set(src);
+        \\
+        \\return encoded.length;
+    },
+    Func{
+        .name = "glGetShaderParameter",
+        .args = &[_]Arg{
+            .{ .name = "shader_id", .type = "c_uint" },
+            .{ .name = "pname", .type = "GLenum" },
+        },
+        // FIXME - return type is actually supposed to be GLenum if pname is SHADER_TYPE,
+        // or GLboolean if pname is DELETE_STATUS or COMPILE_STATUS.
+        .ret = "GLenum",
+        .js =
+        \\const result = gl.getShaderParameter(glShaders[shader_id], pname);
+        \\if (result === null) return 0;
+        \\if (result === false) return 0;
+        \\if (result === true) return 1;
+        \\return result;
+    },
     // TODO - glGetShaderPrecisionFormat
     // TODO - glGetShaderSource
     // TODO - glGetSupportedExtensions
@@ -402,7 +537,7 @@ const funcs = [_]Func{
         .name = "glGetUniformLocation",
         .args = &[_]Arg{
             .{ .name = "program_id", .type = "c_uint" },
-            .{ .name = "name", .type = "SLICE" },
+            .{ .name = "name", .type = "STRING" },
         },
         .ret = "c_int",
         .js =
@@ -450,10 +585,10 @@ const funcs = [_]Func{
     // TODO - glSampleCoverage
     // TODO - glScissor
     Func{
-        .name = "glShaderSource",
+        .name = "glShaderSource_api",
         .args = &[_]Arg{
             .{ .name = "shader", .type = "GLuint" },
-            .{ .name = "string", .type = "SLICE" },
+            .{ .name = "string", .type = "STRING" },
         },
         .ret = "void",
         .js =
@@ -466,25 +601,35 @@ const funcs = [_]Func{
     // TODO - glStencilOp
     // TODO - glStencilOpSeparate
     Func{
-        .name = "glTexImage2D",
-        // FIXME - take slice for data. note it needs to be optional
+        .name = "glTexImage2D_api",
         .args = &[_]Arg{
-            .{ .name = "target", .type = "c_uint" },
-            .{ .name = "level", .type = "c_uint" },
-            .{ .name = "internal_format", .type = "c_uint" },
-            .{ .name = "width", .type = "c_int" },
-            .{ .name = "height", .type = "c_int" },
-            .{ .name = "border", .type = "c_uint" },
-            .{ .name = "format", .type = "c_uint" },
-            .{ .name = "type", .type = "c_uint" },
-            .{ .name = "data_ptr", .type = "?[*]const u8" },
-            .{ .name = "data_len", .type = "c_uint" },
+            .{ .name = "target", .type = "GLenum" },
+            .{ .name = "level", .type = "GLint" },
+            .{ .name = "internal_format", .type = "GLint" },
+            .{ .name = "width", .type = "GLsizei" },
+            .{ .name = "height", .type = "GLsizei" },
+            .{ .name = "border", .type = "GLint" },
+            .{ .name = "format", .type = "GLenum" },
+            .{ .name = "type_", .type = "GLenum" },
+            //.{ .name = "pixels", .type = "OPTIONAL_SLICE" },
+            .{ .name = "pixels", .type = "?[*]const u8" },
         },
         .ret = "void",
         .js =
-        \\// FIXME - look at data_ptr, not data_len, to determine NULL?
-        \\const data = data_len > 0 ? new Uint8Array(getMemory().buffer, data_ptr, data_len) : null;
-        \\gl.texImage2D(target, level, internal_format, width, height, border, format, type, data);
+        \\if (pixels === null) {
+        \\    gl.texImage2D(target, level, internal_format, width, height, border, format, type_, null);
+        \\} else {
+        \\    const bytes_per_pixel = getBytesPerPixel(format, type_);
+        \\    if (bytes_per_pixel === 0) return; // invalid (TODO set gl error?)
+        \\
+        \\    const pixels_len = width * height * bytes_per_pixel;
+        \\
+        \\    const data = (type_ === gl.UNSIGNED_BYTE)
+        \\        ? new Uint8Array(getMemory().buffer, pixels, pixels_len)
+        \\        : new Uint16Array(getMemory().buffer, pixels, pixels_len / 2);
+        \\
+        \\    gl.texImage2D(target, level, internal_format, width, height, border, format, type_, data);
+        \\}
     },
     Func{
         .name = "glTexParameterf",
@@ -636,9 +781,8 @@ fn writeZigFile(filename: []const u8) !void {
 
     for (funcs) |func| {
         const any_slice = for (func.args) |arg| {
-            if (std.mem.eql(u8, arg.type, "SLICE")) {
-                break true;
-            }
+            if (std.mem.eql(u8, arg.type, "STRING")) break true;
+            if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) break true;
         } else false;
 
         // https://github.com/ziglang/zig/issues/3882
@@ -649,8 +793,10 @@ fn writeZigFile(filename: []const u8) !void {
             if (i > 0) {
                 try stream.print(", ", .{});
             }
-            if (std.mem.eql(u8, arg.type, "SLICE")) {
+            if (std.mem.eql(u8, arg.type, "STRING")) {
                 try stream.print("{}_ptr: [*]const u8, {}_len: c_uint", .{ arg.name, arg.name });
+            } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
+                try stream.print("{}_ptr: ?[*]const u8, {}_len: c_uint", .{ arg.name, arg.name });
             } else {
                 try stream.print("{}: {}", .{ arg.name, arg.type });
             }
@@ -663,13 +809,27 @@ fn writeZigFile(filename: []const u8) !void {
                 if (i > 0) {
                     try stream.print(", ", .{});
                 }
-                if (std.mem.eql(u8, arg.type, "SLICE")) {
+                if (std.mem.eql(u8, arg.type, "STRING")) {
                     try stream.print("{}: []const u8", .{arg.name});
+                } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
+                    try stream.print("{}: ?[]const u8", .{arg.name});
                 } else {
                     try stream.print("{}: {}", .{ arg.name, arg.type });
                 }
             }
             try stream.print(") {} {{\n", .{func.ret});
+            for (func.args) |arg, i| {
+                if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
+                    try stream.print("    const {}_ptr = if ({}) |p| p.ptr else null;\n", .{
+                        arg.name,
+                        arg.name,
+                    });
+                    try stream.print("    const {}_len = if ({}) |p| p.len else 0;\n", .{
+                        arg.name,
+                        arg.name,
+                    });
+                }
+            }
             // https://github.com/ziglang/zig/issues/3882
             const fmtarg_ret = if (std.mem.eql(u8, func.ret, "void")) "" else "return ";
             try stream.print("    {}{}_(", .{ fmtarg_ret, func.name });
@@ -677,8 +837,10 @@ fn writeZigFile(filename: []const u8) !void {
                 if (i > 0) {
                     try stream.print(", ", .{});
                 }
-                if (std.mem.eql(u8, arg.type, "SLICE")) {
+                if (std.mem.eql(u8, arg.type, "STRING")) {
                     try stream.print("{}.ptr, {}.len", .{ arg.name, arg.name });
+                } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
+                    try stream.print("{}_ptr, {}_len", .{ arg.name, arg.name });
                 } else {
                     try stream.print("{}", .{arg.name});
                 }
@@ -700,9 +862,8 @@ fn writeJsFile(filename: []const u8) !void {
     try stream.print("    return {{\n", .{});
     for (funcs) |func| {
         const any_slice = for (func.args) |arg| {
-            if (std.mem.eql(u8, arg.type, "SLICE")) {
-                break true;
-            }
+            if (std.mem.eql(u8, arg.type, "STRING")) break true;
+            if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) break true;
         } else false;
 
         // https://github.com/ziglang/zig/issues/3882
@@ -712,7 +873,9 @@ fn writeJsFile(filename: []const u8) !void {
             if (i > 0) {
                 try stream.print(", ", .{});
             }
-            if (std.mem.eql(u8, arg.type, "SLICE")) {
+            if (std.mem.eql(u8, arg.type, "STRING") or
+                std.mem.eql(u8, arg.type, "OPTIONAL_SLICE"))
+            {
                 try stream.print("{}_ptr, {}_len", .{ arg.name, arg.name });
             } else {
                 try stream.print("{}", .{arg.name});
@@ -720,14 +883,21 @@ fn writeJsFile(filename: []const u8) !void {
         }
         try stream.print(") {{\n", .{});
         for (func.args) |arg| {
-            if (std.mem.eql(u8, arg.type, "SLICE")) {
+            if (std.mem.eql(u8, arg.type, "STRING")) {
                 try stream.print("            const {} = readCharStr({}_ptr, {}_len);\n", .{ arg.name, arg.name, arg.name });
+            } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
+                // js code will do it manually
             }
         }
         var start: usize = 0;
         while (start < func.js.len) {
             const rel_newline_pos = nextNewline(func.js[start..]);
-            try stream.print("            {}\n", .{func.js[start .. start + rel_newline_pos]});
+            const slice = func.js[start .. start + rel_newline_pos];
+            if (slice.len > 0) {
+                try stream.print("            {}\n", .{slice});
+            } else {
+                try stream.print("\n", .{});
+            }
             start += rel_newline_pos + 1;
         }
         try stream.print("        }},\n", .{});
