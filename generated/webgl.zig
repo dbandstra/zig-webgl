@@ -62,7 +62,7 @@ extern fn glShaderSource_api_(shader: GLuint, string_ptr: [*]const u8, string_le
 pub fn glShaderSource_api(shader: GLuint, string: []const u8) void {
     glShaderSource_api_(shader, string.ptr, string.len);
 }
-pub extern fn glTexImage2D_api(target: GLenum, level: GLint, internal_format: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, type_: GLenum, pixels: ?[*]const u8) void;
+pub extern fn glTexImage2D_api(target: GLenum, level: GLint, internal_format: GLint, width: GLsizei, height: GLsizei, border: GLint, format: GLenum, type_: GLenum, pixels_ptr: ?*c_void, pixels_len: usize) void;
 pub extern fn glTexParameterf(target: c_uint, pname: c_uint, param: f32) void;
 pub extern fn glTexParameteri(target: c_uint, pname: c_uint, param: c_uint) void;
 pub extern fn glUniform1f(location_id: c_int, x: f32) void;
@@ -173,6 +173,29 @@ pub fn glShaderSource(
     glShaderSource_api(shader, str);
 }
 
+fn getBytesPerPixel(format: GLenum, type_: GLenum) GLsizei {
+    switch (type_) {
+        GL_UNSIGNED_BYTE => {
+            switch (format) {
+                GL_RGBA => return 4,
+                GL_RGB => return 3,
+                GL_LUMINANCE_ALPHA => return 2,
+                GL_LUMINANCE, GL_ALPHA => return 1,
+            }
+        },
+        GL_UNSIGNED_SHORT_4_4_4_4 => {
+            if (format == gl.RGBA) return 2;
+        },
+        GL_UNSIGNED_SHORT_5_5_5_1 => {
+            if (format == gl.RGBA) return 2;
+        },
+        GL_UNSIGNED_SHORT_5_6_5 => {
+            if (format == gl.RGB) return 2;
+        },
+    }
+    return 0; // invalid
+}
+
 pub fn glTexImage2D(
     target: GLenum,
     level: GLint,
@@ -184,7 +207,16 @@ pub fn glTexImage2D(
     type_: GLenum,
     pixels: ?*const c_void,
 ) void {
-    glTexImage2D(target, level, internalformat, width, height, border, format, type_, pixels);
+    if (pixels == null) {
+        glTexImage2D_api(target, level, internalformat, width, height, border, format, type_, null, 0);
+    } else {
+        const bytes_per_pixel = getBytesPerPixel(format, type_);
+        if (bytes_per_pixel == 0) return; // invalid (TODO set gl error?)
+
+        const pixels_len = width * height * bytes_per_pixel;
+
+        glTexImage2D_api(target, level, internal_format, width, height, border, format, type_, pixels, pixels_len);
+    }
 }
 
 // these aren't part of WebGL (since javascript has its own booleans) but i've been using them

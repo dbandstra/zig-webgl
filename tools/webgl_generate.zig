@@ -45,37 +45,6 @@ const js_top =
     \\        return s;
     \\    };
     \\
-    \\    const getBytesPerPixel = (format, type) => {
-    \\        switch (type) {
-    \\            case gl.UNSIGNED_BYTE:
-    \\                switch (format) {
-    \\                    case gl.RGBA:
-    \\                        return 4;
-    \\                    case gl.RGB:
-    \\                        return 3;
-    \\                    case gl.LUMINANCE_ALPHA:
-    \\                        return 2;
-    \\                    case gl.LUMINANCE:
-    \\                    case gl.ALPHA:
-    \\                        return 1;
-    \\                }
-    \\                break;
-    \\            case gl.UNSIGNED_SHORT_4_4_4_4:
-    \\                if (format === gl.RGBA)
-    \\                    return 2;
-    \\                break;
-    \\            case gl.UNSIGNED_SHORT_5_5_5_1:
-    \\                if (format === gl.RGBA)
-    \\                    return 2;
-    \\                break;
-    \\            case gl.UNSIGNED_SHORT_5_6_5:
-    \\                if (format === gl.RGB)
-    \\                    return 2;
-    \\                break;
-    \\        }
-    \\        return 0; // invalid
-    \\    };
-    \\
     \\    const glShaders = [];
     \\    const glPrograms = [];
     \\    const glBuffers = [];
@@ -607,23 +576,17 @@ const funcs = [_]Func{
             .{ .name = "border", .type = "GLint" },
             .{ .name = "format", .type = "GLenum" },
             .{ .name = "type_", .type = "GLenum" },
-            //.{ .name = "pixels", .type = "OPTIONAL_SLICE" },
-            .{ .name = "pixels", .type = "?[*]const u8" },
+            .{ .name = "pixels_ptr", .type = "?*c_void" },
+            .{ .name = "pixels_len", .type = "usize" },
         },
         .ret = "void",
         .js =
-        \\if (pixels === null) {
+        \\if (pixels_ptr === null) {
         \\    gl.texImage2D(target, level, internal_format, width, height, border, format, type_, null);
         \\} else {
-        \\    const bytes_per_pixel = getBytesPerPixel(format, type_);
-        \\    if (bytes_per_pixel === 0) return; // invalid (TODO set gl error?)
-        \\
-        \\    const pixels_len = width * height * bytes_per_pixel;
-        \\
         \\    const data = (type_ === gl.UNSIGNED_BYTE)
         \\        ? new Uint8Array(getMemory().buffer, pixels, pixels_len)
         \\        : new Uint16Array(getMemory().buffer, pixels, pixels_len / 2);
-        \\
         \\    gl.texImage2D(target, level, internal_format, width, height, border, format, type_, data);
         \\}
     },
@@ -778,7 +741,6 @@ fn writeZigFile(filename: []const u8) !void {
     for (funcs) |func| {
         const any_slice = for (func.args) |arg| {
             if (std.mem.eql(u8, arg.type, "STRING")) break true;
-            if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) break true;
         } else false;
 
         // https://github.com/ziglang/zig/issues/3882
@@ -791,8 +753,6 @@ fn writeZigFile(filename: []const u8) !void {
             }
             if (std.mem.eql(u8, arg.type, "STRING")) {
                 try stream.print("{}_ptr: [*]const u8, {}_len: c_uint", .{ arg.name, arg.name });
-            } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
-                try stream.print("{}_ptr: ?[*]const u8, {}_len: c_uint", .{ arg.name, arg.name });
             } else {
                 try stream.print("{}: {}", .{ arg.name, arg.type });
             }
@@ -807,25 +767,11 @@ fn writeZigFile(filename: []const u8) !void {
                 }
                 if (std.mem.eql(u8, arg.type, "STRING")) {
                     try stream.print("{}: []const u8", .{arg.name});
-                } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
-                    try stream.print("{}: ?[]const u8", .{arg.name});
                 } else {
                     try stream.print("{}: {}", .{ arg.name, arg.type });
                 }
             }
             try stream.print(") {} {{\n", .{func.ret});
-            for (func.args) |arg, i| {
-                if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
-                    try stream.print("    const {}_ptr = if ({}) |p| p.ptr else null;\n", .{
-                        arg.name,
-                        arg.name,
-                    });
-                    try stream.print("    const {}_len = if ({}) |p| p.len else 0;\n", .{
-                        arg.name,
-                        arg.name,
-                    });
-                }
-            }
             // https://github.com/ziglang/zig/issues/3882
             const fmtarg_ret = if (std.mem.eql(u8, func.ret, "void")) "" else "return ";
             try stream.print("    {}{}_(", .{ fmtarg_ret, func.name });
@@ -835,8 +781,6 @@ fn writeZigFile(filename: []const u8) !void {
                 }
                 if (std.mem.eql(u8, arg.type, "STRING")) {
                     try stream.print("{}.ptr, {}.len", .{ arg.name, arg.name });
-                } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
-                    try stream.print("{}_ptr, {}_len", .{ arg.name, arg.name });
                 } else {
                     try stream.print("{}", .{arg.name});
                 }
@@ -859,7 +803,6 @@ fn writeJsFile(filename: []const u8) !void {
     for (funcs) |func| {
         const any_slice = for (func.args) |arg| {
             if (std.mem.eql(u8, arg.type, "STRING")) break true;
-            if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) break true;
         } else false;
 
         // https://github.com/ziglang/zig/issues/3882
@@ -869,9 +812,7 @@ fn writeJsFile(filename: []const u8) !void {
             if (i > 0) {
                 try stream.print(", ", .{});
             }
-            if (std.mem.eql(u8, arg.type, "STRING") or
-                std.mem.eql(u8, arg.type, "OPTIONAL_SLICE"))
-            {
+            if (std.mem.eql(u8, arg.type, "STRING")) {
                 try stream.print("{}_ptr, {}_len", .{ arg.name, arg.name });
             } else {
                 try stream.print("{}", .{arg.name});
@@ -881,8 +822,6 @@ fn writeJsFile(filename: []const u8) !void {
         for (func.args) |arg| {
             if (std.mem.eql(u8, arg.type, "STRING")) {
                 try stream.print("            const {} = readCharStr({}_ptr, {}_len);\n", .{ arg.name, arg.name, arg.name });
-            } else if (std.mem.eql(u8, arg.type, "OPTIONAL_SLICE")) {
-                // js code will do it manually
             }
         }
         var start: usize = 0;

@@ -8,37 +8,6 @@ function getWebGLEnv(gl, getMemory) {
         return s;
     };
 
-    const getBytesPerPixel = (format, type) => {
-        switch (type) {
-            case gl.UNSIGNED_BYTE:
-                switch (format) {
-                    case gl.RGBA:
-                        return 4;
-                    case gl.RGB:
-                        return 3;
-                    case gl.LUMINANCE_ALPHA:
-                        return 2;
-                    case gl.LUMINANCE:
-                    case gl.ALPHA:
-                        return 1;
-                }
-                break;
-            case gl.UNSIGNED_SHORT_4_4_4_4:
-                if (format === gl.RGBA)
-                    return 2;
-                break;
-            case gl.UNSIGNED_SHORT_5_5_5_1:
-                if (format === gl.RGBA)
-                    return 2;
-                break;
-            case gl.UNSIGNED_SHORT_5_6_5:
-                if (format === gl.RGB)
-                    return 2;
-                break;
-        }
-        return 0; // invalid
-    };
-
     const glShaders = [];
     const glPrograms = [];
     const glBuffers = [];
@@ -227,19 +196,13 @@ function getWebGLEnv(gl, getMemory) {
             const string = readCharStr(string_ptr, string_len);
             gl.shaderSource(glShaders[shader], string);
         },
-        glTexImage2D_api(target, level, internal_format, width, height, border, format, type_, pixels) {
-            if (pixels === null) {
+        glTexImage2D_api(target, level, internal_format, width, height, border, format, type_, pixels_ptr, pixels_len) {
+            if (pixels_ptr === null) {
                 gl.texImage2D(target, level, internal_format, width, height, border, format, type_, null);
             } else {
-                const bytes_per_pixel = getBytesPerPixel(format, type_);
-                if (bytes_per_pixel === 0) return; // invalid (TODO set gl error?)
-
-                const pixels_len = width * height * bytes_per_pixel;
-
                 const data = (type_ === gl.UNSIGNED_BYTE)
                     ? new Uint8Array(getMemory().buffer, pixels, pixels_len)
                     : new Uint16Array(getMemory().buffer, pixels, pixels_len / 2);
-
                 gl.texImage2D(target, level, internal_format, width, height, border, format, type_, data);
             }
         },
