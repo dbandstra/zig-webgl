@@ -86,6 +86,13 @@ pub fn glDeleteBuffers(n: GLsizei, buffers: [*c]const GLuint) void {
     }
 }
 
+pub fn glDeleteTextures(n: GLsizei, textures: [*c]const GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        glDeleteTexture(textures[i]);
+    }
+}
+
 pub fn glGenBuffers(n: GLsizei, buffers: [*c]GLuint) void {
     var i: usize = 0;
     while (i < n) : (i += 1) {
