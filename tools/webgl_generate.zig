@@ -17,14 +17,14 @@ const Arg = struct {
 // TODO - don't use i64. that gives you "can't convert BigInt to number" errors
 const zig_top =
     \\pub const GLenum = c_uint;
-    \\pub const GLboolean = bool;
+    \\pub const GLboolean = c_int;
     \\pub const GLbitfield = c_uint;
     \\pub const GLbyte = i8;
     \\pub const GLshort = i16;
     \\pub const GLint = i32;
     \\pub const GLsizei = i32;
-    \\pub const GLintptr = i64;
-    \\pub const GLsizeiptr = i64;
+    \\pub const GLintptr = i32; // i64; // hope this is ok
+    \\pub const GLsizeiptr = i32; // i64;
     \\pub const GLubyte = u8;
     \\pub const GLushort = u16;
     \\pub const GLuint = u32;
@@ -52,13 +52,17 @@ const js_top =
     \\    const glFramebuffers = [];
     \\    const glUniformLocations = [];
     \\
+    \\    // webgl 2
+    \\    const glQueries = [];
+    \\    const glVertexArrayObjects = [];
+    \\
 ;
 
 const js_bottom =
     \\}
 ;
 
-const funcs = [_]Func{
+const webgl_funcs = [_]Func{
     Func{
         .name = "getProgramInfoLogLength",
         .args = &[_]Arg{
@@ -101,7 +105,17 @@ const funcs = [_]Func{
         .js =
         \\gl.attachShader(glPrograms[program], glShaders[shader]);
     },
-    // TODO - glBindAttribLocation
+    Func{
+        .name = "glBindAttribLocation",
+        .args = &[_]Arg{
+            .{ .name = "program_id", .type = "GLuint" },
+            .{ .name = "index", .type = "GLuint" },
+            .{ .name = "name", .type = "STRING" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.bindAttribLocation(glPrograms[program_id], index, name);
+    },
     Func{
         .name = "glBindBuffer",
         .args = &[_]Arg{
@@ -151,7 +165,7 @@ const funcs = [_]Func{
         .name = "glBufferData",
         .args = &[_]Arg{
             .{ .name = "target", .type = "GLenum" },
-            .{ .name = "size", .type = "c_uint" }, // GLsizeiptr
+            .{ .name = "size", .type = "GLsizeiptr" },
             .{ .name = "data", .type = "?*const c_void" }, // TODO maybe `?[*]const u8` instead
             .{ .name = "usage", .type = "GLenum" },
         },
@@ -195,9 +209,28 @@ const funcs = [_]Func{
         .js =
         \\gl.clearColor(r, g, b, a);
     },
-    // TODO - glClearDepth
+    Func{
+        .name = "glClearDepth",
+        .args = &[_]Arg{
+            .{ .name = "depth", .type = "GLclampf" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.clearDepth(depth);
+    },
     // TODO - glClearStencil
-    // TODO - glColorMask
+    Func{
+        .name = "glColorMask",
+        .args = &[_]Arg{
+            .{ .name = "red", .type = "GLboolean" },
+            .{ .name = "green", .type = "GLboolean" },
+            .{ .name = "blue", .type = "GLboolean" },
+            .{ .name = "alpha", .type = "GLboolean" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.colorMask(red, green, blue, alpha);
+    },
     // TODO - glCommit
     Func{
         .name = "glCompileShader",
@@ -308,8 +341,25 @@ const funcs = [_]Func{
         .js =
         \\gl.depthFunc(x);
     },
-    // TODO - glDepthMask
-    // TODO - glDepthRange
+    Func{
+        .name = "glDepthMask",
+        .args = &[_]Arg{
+            .{ .name = "flag", .type = "GLboolean" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.depthMask(flag);
+    },
+    Func{
+        .name = "glDepthRange",
+        .args = &[_]Arg{
+            .{ .name = "z_near", .type = "GLclampf" },
+            .{ .name = "z_far", .type = "GLclampf" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.depthRange(z_near, z_far);
+    },
     Func{
         .name = "glDetachShader",
         .args = &[_]Arg{
@@ -548,7 +598,18 @@ const funcs = [_]Func{
     // TODO - glReadPixels
     // TODO - glRenderbufferStorage
     // TODO - glSampleCoverage
-    // TODO - glScissor
+    Func{
+        .name = "glScissor",
+        .args = &[_]Arg{
+            .{ .name = "x", .type = "GLint" },
+            .{ .name = "y", .type = "GLint" },
+            .{ .name = "width", .type = "GLsizei" },
+            .{ .name = "height", .type = "GLsizei" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.scissor(x, y, width, height);
+    },
     Func{
         .name = "glShaderSource_api",
         .args = &[_]Arg{
@@ -635,12 +696,33 @@ const funcs = [_]Func{
         \\gl.uniform1i(glUniformLocations[location_id], x);
     },
     // TODO - glUniform1iv
-    // TODO - glUniform2f
-    // TODO - glUniform2fv
+    Func{
+        .name = "glUniform2f",
+        .args = &[_]Arg{
+            .{ .name = "location_id", .type = "c_int" },
+            .{ .name = "x", .type = "f32" },
+            .{ .name = "y", .type = "f32" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.uniform2f(glUniformLocations[location_id], x, y);
+    },
+    // glUniform2fv implemented in webgl_ext.zig
     // TODO - glUniform2i
     // TODO - glUniform2iv
-    // TODO - glUniform3f
-    // TODO - glUniform3fv
+    Func{
+        .name = "glUniform3f",
+        .args = &[_]Arg{
+            .{ .name = "location_id", .type = "c_int" },
+            .{ .name = "x", .type = "f32" },
+            .{ .name = "y", .type = "f32" },
+            .{ .name = "z", .type = "f32" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.uniform3f(glUniformLocations[location_id], x, y, z);
+    },
+    // glUniform3fv implemented in webgl_ext.zig
     // TODO - glUniform3i
     // TODO - glUniform3iv
     Func{
@@ -656,7 +738,7 @@ const funcs = [_]Func{
         .js =
         \\gl.uniform4f(glUniformLocations[location_id], x, y, z, w);
     },
-    // TODO - glUniform4fv
+    // glUniform4fv implemented in webgl_ext.zig
     // TODO - glUniform4i
     // TODO - glUniform4iv
     // TODO - glUniformMatrix2fv
@@ -721,6 +803,87 @@ const funcs = [_]Func{
     },
 };
 
+// very incomplete list
+const webgl2_funcs = [_]Func{
+    Func{
+        .name = "glBeginQuery",
+        .args = &[_]Arg{
+            .{ .name = "target", .type = "GLenum" },
+            .{ .name = "query_id", .type = "GLuint" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.beginQuery(target, glQueries[query_id]);
+    },
+    Func{
+        .name = "glBindVertexArray",
+        .args = &[_]Arg{
+            .{ .name = "vao_id", .type = "GLuint" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.bindVertexArray(glVertexArrayObjects[vao_id]);
+    },
+    Func{
+        .name = "glCreateQuery",
+        .args = &[_]Arg{},
+        .ret = "GLuint",
+        .js =
+        \\glQueries.push(gl.createQuery());
+        \\return glQueries.length - 1;
+    },
+    Func{
+        .name = "glCreateVertexArray",
+        .args = &[_]Arg{},
+        .ret = "GLuint",
+        .js =
+        \\glVertexArrayObjects.push(gl.createVertexArray());
+        \\return glVertexArrayObjects.length - 1;
+    },
+    Func{
+        .name = "glDeleteQuery",
+        .args = &[_]Arg{
+            .{ .name = "query_id", .type = "GLuint" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.deleteQuery(glQueries[query_id]);
+    },
+    Func{
+        .name = "glDrawRangeElements",
+        .args = &[_]Arg{
+            .{ .name = "mode", .type = "GLenum" },
+            .{ .name = "start", .type = "GLuint" },
+            .{ .name = "end", .type = "GLuint" },
+            .{ .name = "count", .type = "GLsizei" },
+            .{ .name = "type_", .type = "GLenum" },
+            .{ .name = "offset", .type = "GLintptr" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.drawRangeElements(mode, start, end, count, type_, offset);
+    },
+    Func{
+        .name = "glEndQuery",
+        .args = &[_]Arg{
+            .{ .name = "target", .type = "GLenum" },
+        },
+        .ret = "void",
+        .js =
+        \\gl.endQuery(target);
+    },
+    Func{
+        .name = "glGetQueryParameter",
+        .args = &[_]Arg{
+            .{ .name = "query_id", .type = "GLuint" },
+            .{ .name = "pname", .type = "GLenum" },
+        },
+        .ret = "GLint", // should this be GLuint?
+        .js =
+        \\return gl.getQueryParameter(glQueries[query_id], pname);
+    },
+};
+
 fn nextNewline(s: []const u8) usize {
     for (s) |ch, i| {
         if (ch == '\n') {
@@ -738,7 +901,7 @@ fn writeZigFile(filename: []const u8) !void {
 
     try stream.print("{}\n\n", .{zig_top});
 
-    for (funcs) |func| {
+    for (webgl_funcs ++ webgl2_funcs) |func| {
         const any_slice = for (func.args) |arg| {
             if (std.mem.eql(u8, arg.type, "STRING")) break true;
         } else false;
@@ -800,7 +963,7 @@ fn writeJsFile(filename: []const u8) !void {
     try stream.print("{}\n", .{js_top});
 
     try stream.print("    return {{\n", .{});
-    for (funcs) |func| {
+    for (webgl_funcs ++ webgl2_funcs) |func| {
         const any_slice = for (func.args) |arg| {
             if (std.mem.eql(u8, arg.type, "STRING")) break true;
         } else false;

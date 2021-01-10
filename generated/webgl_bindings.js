@@ -15,6 +15,10 @@ function getWebGLEnv(gl, getMemory) {
     const glFramebuffers = [];
     const glUniformLocations = [];
 
+    // webgl 2
+    const glQueries = [];
+    const glVertexArrayObjects = [];
+
     return {
         getProgramInfoLogLength(program_id) {
             const log = gl.getProgramInfoLog(glPrograms[program_id]);
@@ -31,6 +35,10 @@ function getWebGLEnv(gl, getMemory) {
         },
         glAttachShader(program, shader) {
             gl.attachShader(glPrograms[program], glShaders[shader]);
+        },
+        glBindAttribLocation_(program_id, index, name_ptr, name_len) {
+            const name = readCharStr(name_ptr, name_len);
+            gl.bindAttribLocation(glPrograms[program_id], index, name);
         },
         glBindBuffer(type, buffer_id) {
             gl.bindBuffer(type, glBuffers[buffer_id]);
@@ -60,6 +68,12 @@ function getWebGLEnv(gl, getMemory) {
         },
         glClearColor(r, g, b, a) {
             gl.clearColor(r, g, b, a);
+        },
+        glClearDepth(depth) {
+            gl.clearDepth(depth);
+        },
+        glColorMask(red, green, blue, alpha) {
+            gl.colorMask(red, green, blue, alpha);
         },
         glCompileShader(shader) {
             gl.compileShader(glShaders[shader]);
@@ -102,6 +116,12 @@ function getWebGLEnv(gl, getMemory) {
         },
         glDepthFunc(x) {
             gl.depthFunc(x);
+        },
+        glDepthMask(flag) {
+            gl.depthMask(flag);
+        },
+        glDepthRange(z_near, z_far) {
+            gl.depthRange(z_near, z_far);
         },
         glDetachShader(program, shader) {
             gl.detachShader(glPrograms[program], glShaders[shader]);
@@ -192,6 +212,9 @@ function getWebGLEnv(gl, getMemory) {
         glPixelStorei(pname, param) {
             gl.pixelStorei(pname, param);
         },
+        glScissor(x, y, width, height) {
+            gl.scissor(x, y, width, height);
+        },
         glShaderSource_api_(shader, string_ptr, string_len) {
             const string = readCharStr(string_ptr, string_len);
             gl.shaderSource(glShaders[shader], string);
@@ -218,6 +241,12 @@ function getWebGLEnv(gl, getMemory) {
         glUniform1i(location_id, x) {
             gl.uniform1i(glUniformLocations[location_id], x);
         },
+        glUniform2f(location_id, x, y) {
+            gl.uniform2f(glUniformLocations[location_id], x, y);
+        },
+        glUniform3f(location_id, x, y, z) {
+            gl.uniform3f(glUniformLocations[location_id], x, y, z);
+        },
         glUniform4f(location_id, x, y, z, w) {
             gl.uniform4f(glUniformLocations[location_id], x, y, z, w);
         },
@@ -233,6 +262,32 @@ function getWebGLEnv(gl, getMemory) {
         },
         glViewport(x, y, width, height) {
             gl.viewport(x, y, width, height);
+        },
+        glBeginQuery(target, query_id) {
+            gl.beginQuery(target, glQueries[query_id]);
+        },
+        glBindVertexArray(vao_id) {
+            gl.bindVertexArray(glVertexArrayObjects[vao_id]);
+        },
+        glCreateQuery() {
+            glQueries.push(gl.createQuery());
+            return glQueries.length - 1;
+        },
+        glCreateVertexArray() {
+            glVertexArrayObjects.push(gl.createVertexArray());
+            return glVertexArrayObjects.length - 1;
+        },
+        glDeleteQuery(query_id) {
+            gl.deleteQuery(glQueries[query_id]);
+        },
+        glDrawRangeElements(mode, start, end, count, type_, offset) {
+            gl.drawRangeElements(mode, start, end, count, type_, offset);
+        },
+        glEndQuery(target) {
+            gl.endQuery(target);
+        },
+        glGetQueryParameter(query_id, pname) {
+            return gl.getQueryParameter(glQueries[query_id], pname);
         },
     };
 }

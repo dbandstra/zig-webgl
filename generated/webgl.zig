@@ -1,12 +1,12 @@
 pub const GLenum = c_uint;
-pub const GLboolean = bool;
+pub const GLboolean = c_int;
 pub const GLbitfield = c_uint;
 pub const GLbyte = i8;
 pub const GLshort = i16;
 pub const GLint = i32;
 pub const GLsizei = i32;
-pub const GLintptr = i64;
-pub const GLsizeiptr = i64;
+pub const GLintptr = i32; // i64; // hope this is ok
+pub const GLsizeiptr = i32; // i64;
 pub const GLubyte = u8;
 pub const GLushort = u16;
 pub const GLuint = u32;
@@ -17,14 +17,20 @@ pub extern fn getProgramInfoLogLength(program_id: GLuint) GLint;
 pub extern fn getShaderInfoLogLength(shader_id: GLuint) GLint;
 pub extern fn glActiveTexture(target: c_uint) void;
 pub extern fn glAttachShader(program: c_uint, shader: c_uint) void;
+extern fn glBindAttribLocation_(program_id: GLuint, index: GLuint, name_ptr: [*]const u8, name_len: c_uint) void;
+pub fn glBindAttribLocation(program_id: GLuint, index: GLuint, name: []const u8) void {
+    glBindAttribLocation_(program_id, index, name.ptr, name.len);
+}
 pub extern fn glBindBuffer(type: c_uint, buffer_id: c_uint) void;
 pub extern fn glBindFramebuffer(target: c_uint, framebuffer: c_uint) void;
 pub extern fn glBindTexture(target: c_uint, texture_id: c_uint) void;
 pub extern fn glBlendFunc(x: c_uint, y: c_uint) void;
-pub extern fn glBufferData(target: GLenum, size: c_uint, data: ?*const c_void, usage: GLenum) void;
+pub extern fn glBufferData(target: GLenum, size: GLsizeiptr, data: ?*const c_void, usage: GLenum) void;
 pub extern fn glCheckFramebufferStatus(target: GLenum) GLenum;
 pub extern fn glClear(mask: GLbitfield) void;
 pub extern fn glClearColor(r: f32, g: f32, b: f32, a: f32) void;
+pub extern fn glClearDepth(depth: GLclampf) void;
+pub extern fn glColorMask(red: GLboolean, green: GLboolean, blue: GLboolean, alpha: GLboolean) void;
 pub extern fn glCompileShader(shader: GLuint) void;
 pub extern fn glCreateBuffer() c_uint;
 pub extern fn glCreateFramebuffer() GLuint;
@@ -36,6 +42,8 @@ pub extern fn glDeleteProgram(id: c_uint) void;
 pub extern fn glDeleteShader(id: c_uint) void;
 pub extern fn glDeleteTexture(id: c_uint) void;
 pub extern fn glDepthFunc(x: c_uint) void;
+pub extern fn glDepthMask(flag: GLboolean) void;
+pub extern fn glDepthRange(z_near: GLclampf, z_far: GLclampf) void;
 pub extern fn glDetachShader(program: c_uint, shader: c_uint) void;
 pub extern fn glDisable(cap: GLenum) void;
 pub extern fn glDrawArrays(mode: GLenum, first: GLint, count: GLsizei) void;
@@ -58,6 +66,7 @@ pub fn glGetUniformLocation(program_id: c_uint, name: []const u8) c_int {
 }
 pub extern fn glLinkProgram(program: c_uint) void;
 pub extern fn glPixelStorei(pname: GLenum, param: GLint) void;
+pub extern fn glScissor(x: GLint, y: GLint, width: GLsizei, height: GLsizei) void;
 extern fn glShaderSource_api_(shader: GLuint, string_ptr: [*]const u8, string_len: c_uint) void;
 pub fn glShaderSource_api(shader: GLuint, string: []const u8) void {
     glShaderSource_api_(shader, string.ptr, string.len);
@@ -67,11 +76,21 @@ pub extern fn glTexParameterf(target: c_uint, pname: c_uint, param: f32) void;
 pub extern fn glTexParameteri(target: c_uint, pname: c_uint, param: c_uint) void;
 pub extern fn glUniform1f(location_id: c_int, x: f32) void;
 pub extern fn glUniform1i(location_id: c_int, x: c_int) void;
+pub extern fn glUniform2f(location_id: c_int, x: f32, y: f32) void;
+pub extern fn glUniform3f(location_id: c_int, x: f32, y: f32, z: f32) void;
 pub extern fn glUniform4f(location_id: c_int, x: f32, y: f32, z: f32, w: f32) void;
 pub extern fn glUniformMatrix4fv(location_id: c_int, data_len: c_int, transpose: c_uint, data_ptr: [*]const f32) void;
 pub extern fn glUseProgram(program_id: c_uint) void;
 pub extern fn glVertexAttribPointer(attrib_location: c_uint, size: c_uint, type: c_uint, normalize: c_uint, stride: c_uint, offset: [*c]const c_uint) void;
 pub extern fn glViewport(x: c_int, y: c_int, width: c_int, height: c_int) void;
+pub extern fn glBeginQuery(target: GLenum, query_id: GLuint) void;
+pub extern fn glBindVertexArray(vao_id: GLuint) void;
+pub extern fn glCreateQuery() GLuint;
+pub extern fn glCreateVertexArray() GLuint;
+pub extern fn glDeleteQuery(query_id: GLuint) void;
+pub extern fn glDrawRangeElements(mode: GLenum, start: GLuint, end: GLuint, count: GLsizei, type_: GLenum, offset: GLintptr) void;
+pub extern fn glEndQuery(target: GLenum) void;
+pub extern fn glGetQueryParameter(query_id: GLuint, pname: GLenum) GLint;
 
 const std = @import("std");
 
@@ -226,6 +245,48 @@ pub fn glTexImage2D(
 
         glTexImage2D_api(target, level, internalformat, width, height, border, format, type_, pixels, pixels_len);
     }
+}
+
+pub fn glUniform2fv(location_id: c_int, count: GLsizei, value: *const [2]f32) void {
+    std.debug.assert(count == 1);
+    glUniform2f(location_id, value[0], value[1]);
+}
+
+pub fn glUniform3fv(location_id: c_int, count: GLsizei, value: *const [3]f32) void {
+    std.debug.assert(count == 1);
+    glUniform3f(location_id, value[0], value[1], value[2]);
+}
+
+pub fn glUniform4fv(location_id: c_int, count: GLsizei, value: *const [4]f32) void {
+    std.debug.assert(count == 1);
+    glUniform4f(location_id, value[0], value[1], value[2], value[3]);
+}
+
+// webgl2:
+
+pub fn glDeleteQueries(n: GLsizei, queries: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        glDeleteQuery(queries[i]);
+    }
+}
+
+pub fn glGenQueries(n: GLsizei, queries: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        queries[i] = glCreateQuery();
+    }
+}
+
+pub fn glGenVertexArrays(n: GLsizei, vaos: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        vaos[i] = glCreateVertexArray();
+    }
+}
+
+pub fn glGetQueryObjectiv(query_id: GLuint, pname: GLenum, params: [*c]GLint) void {
+    params.* = glGetQueryParameter(query_id, pname);
 }
 
 // these aren't part of WebGL (since javascript has its own booleans) but i've been using them
@@ -576,3 +637,7 @@ pub const GL_INVALID_FRAMEBUFFER_OPERATION = 0x0506;
 pub const GL_UNPACK_FLIP_Y_WEBGL = 0x9240;
 pub const GL_UNPACK_PREMULTIPLY_ALPHA_WEBGL = 0x9241;
 pub const GL_UNPACK_COLORSPACE_CONVERSION_WEBGL = 0x9243;
+
+// incomplete list of webgl2 constants
+pub const GL_QUERY_RESULT = 0x8866;
+pub const GL_SAMPLES_PASSED = 0x8914;

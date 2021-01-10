@@ -152,3 +152,45 @@ pub fn glTexImage2D(
         glTexImage2D_api(target, level, internalformat, width, height, border, format, type_, pixels, pixels_len);
     }
 }
+
+pub fn glUniform2fv(location_id: c_int, count: GLsizei, value: *const [2]f32) void {
+    std.debug.assert(count == 1);
+    glUniform2f(location_id, value[0], value[1]);
+}
+
+pub fn glUniform3fv(location_id: c_int, count: GLsizei, value: *const [3]f32) void {
+    std.debug.assert(count == 1);
+    glUniform3f(location_id, value[0], value[1], value[2]);
+}
+
+pub fn glUniform4fv(location_id: c_int, count: GLsizei, value: *const [4]f32) void {
+    std.debug.assert(count == 1);
+    glUniform4f(location_id, value[0], value[1], value[2], value[3]);
+}
+
+// webgl2:
+
+pub fn glDeleteQueries(n: GLsizei, queries: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        glDeleteQuery(queries[i]);
+    }
+}
+
+pub fn glGenQueries(n: GLsizei, queries: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        queries[i] = glCreateQuery();
+    }
+}
+
+pub fn glGenVertexArrays(n: GLsizei, vaos: [*c]GLuint) void {
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        vaos[i] = glCreateVertexArray();
+    }
+}
+
+pub fn glGetQueryObjectiv(query_id: GLuint, pname: GLenum, params: [*c]GLint) void {
+    params.* = glGetQueryParameter(query_id, pname);
+}
